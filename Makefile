@@ -72,11 +72,15 @@ telegraf:
 .PHONY: install
 install: telegraf etc/telegraf.conf etc/logrotate.d/telegraf
 	if [ $(GOOS) != "windows" ]; then \
-		mkdir -p $(DESTDIR)/etc/telegraf ; \
+		mkdir -p $(DESTDIR)/etc/telegraf.d ; \
+		mkdir -p $(DESTDIR)/var/log/telegraf ; \
 		mkdir -p $(DESTDIR)/etc/logrotate.d ; \
+		mkdir -p $(DESTDIR)/usr/lib/telegraf/scripts ; \
 		mkdir -p $(DESTDIR)$(PREFIX)/bin/ ; \
 		cp -f etc/telegraf.conf $(DESTDIR)/etc/telegraf ; \
 		cp -f etc/logrotate.d/telegraf $(DESTDIR)/etc/logrotate.d ; \
+		cp -f scripts/init.sh $(DESTDIR)/usr/lib/telegraf/scripts ; \
+		cp -f scripts/telegraf.service $(DESTDIR)/usr/lib/telegraf/scripts ; \
 		cp -f telegraf$(EXE) $(DESTDIR)$(PREFIX)/bin ; \
 	else \
 		mkdir -p $(DESTDIR) ; \
