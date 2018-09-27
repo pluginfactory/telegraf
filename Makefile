@@ -17,14 +17,16 @@ else ifeq ($(SHELL), sh.exe)
 	CGO_ENABLED ?= 0
 	export CGO_ENABLED
 else
-	VERSION := $(shell git describe --exact-match --tags 2>/dev/null)
+	VERSION ?= $(shell git describe --exact-match --tags 2>/dev/null)
 endif
 
-ifndef VERSION
-	VERSION := $(NEXT_VERSION)
+ifeq ($(VERSION),)
+	VERSION = $(NEXT_VERSION)
 endif
 
 ifdef TAG
+	FULL_VERSION := $(VERSION)
+else ifeq ($(VERSION), nightly)
 	FULL_VERSION := $(VERSION)
 else
 	FULL_VERSION := $(VERSION)~$(COMMIT)
@@ -162,9 +164,9 @@ package-nightly:
 
 .PHONY: clean
 clean:
-	rm -f telegraf
-	rm -f telegraf.exe
-	rm -rf build
+	-rm -f telegraf
+	-rm -f telegraf.exe
+	-rm -rf build
 
 .PHONY: docker-image
 docker-image:

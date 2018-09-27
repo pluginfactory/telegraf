@@ -23,6 +23,10 @@ func (v *Version) RPMVersion() string {
 }
 
 func (v *Version) RPMRelease() string {
+	if v.version == "nightly" {
+		return "0"
+	}
+
 	if v.rc == "" && v.hash == "" {
 		return "1"
 	}
@@ -43,6 +47,9 @@ func (v *Version) RPMExtraVer() string {
 }
 
 func (v *Version) RPMFullVersion() string {
+	if v.version == "nightly" {
+		return v.version
+	}
 	return v.RPMVersion() + "-" + v.RPMRelease() + "." + v.RPMExtraVer()
 }
 
@@ -55,17 +62,26 @@ func (v *Version) DebVersion() string {
 }
 
 func (v *Version) DebRevision() string {
-	if v.hash != "" {
+	if v.hash != "" || v.version == "nightly" {
 		return "0"
 	}
 	return "1"
 }
 
 func (v *Version) DebFullVersion() string {
+	if v.version == "nightly" {
+		return v.version
+	}
 	return v.DebVersion() + "-" + v.DebRevision()
 }
 
 func version(version string) (*Version, error) {
+	if version == "nightly" {
+		return &Version{
+			version: version,
+		}, nil
+	}
+
 	parts := versionRe.FindStringSubmatch(version)
 	if parts == nil {
 		return nil, fmt.Errorf("could not parse version: %s", version)
@@ -86,6 +102,8 @@ func main() {
 		fmt.Printf("usage: pv <version> [variable]\n")
 		os.Exit(1)
 	}
+
+	// fmt.Fprintln(os.Stderr, args[0])
 
 	v, err := version(args[0])
 	if err != nil {
