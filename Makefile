@@ -57,8 +57,6 @@ help:
 	@echo '  rpm      - build a rpm package'
 	@echo '  zip      - build a zip package'
 	@echo '  tar.gz   - build a tar.gz package'
-	@echo '  package  - create all packages'
-	@echo '  sign     - sign packages'
 	 echo ''
 	@echo 'Packages:'
 	@$(foreach package,$(packages),echo "  $(package)";)
@@ -374,10 +372,3 @@ package: $(packages)
 %windows_amd64.zip: export EXE = .exe
 %windows_i386.zip: export GOOS = windows
 %windows_i386.zip: export GOARCH = 386
-
-sign: $(addsuffix .asc,$(packages))
-
-.SECONDARY: %.asc
-%.asc: %
-	-rm -f $@
-	gpg --armor --detach-sign $<
