@@ -1,12 +1,8 @@
 NEXT_VERSION := 1.15.0
-PREFIX ?= /usr/local
 BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD)
 COMMIT ?= $(shell git rev-parse --short HEAD)
-GOFILES ?= $(shell git ls-files '*.go')
-GOFMT ?= $(shell gofmt -l $(filter-out plugins/parsers/influx/machine.go, $(GOFILES)))
-GOOS ?= $(shell go env GOOS)
-GOARCH ?= $(shell go env GOARCH)
-LDFLAGS += -X main.version=$(VERSION) -X main.commit=$(COMMIT)-X main.branch=$(BRANCH)
+LDFLAGS += -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.branch=$(BRANCH)
+PREFIX ?= /usr/local
 
 ifeq ($(OS), Windows_NT)
 	VERSION := $(shell git describe --exact-match --tags 2>nul)
@@ -34,9 +30,9 @@ else
 	FULL_VERSION := $(VERSION)~$(COMMIT)
 endif
 
-GONATIVE := env -u GOOS -u GOARCH -u GOARM
-RPM_FULL_VERSION := $(shell $(GONATIVE) -- go run scripts/pv.go $(FULL_VERSION) RPM_FULL_VERSION)
-DEB_FULL_VERSION := $(shell $(GONATIVE) -- go run scripts/pv.go $(FULL_VERSION) DEB_FULL_VERSION)
+GOOS ?= $(shell go env GOOS)
+GOARCH ?= $(shell go env GOARCH)
+GOHOST := env -u GOOS -u GOARCH -u GOARM -- go
 
 MAKEFLAGS += --no-print-directory
 
@@ -75,24 +71,23 @@ telegraf:
 
 .PHONY: install
 install:
-	$(MAKE) telegraf
-
-	mkdir -p "$(DESTDIR)"
-	if [ $(GOOS) != "windows" ]; then \
-		mkdir -p $(DESTDIR)$(PREFIX)/bin ; \
-		go build -o $(DISTDIR)$(PREFIX)/bin -ldflags "-w -s $(LDFLAGS)" ./cmd/telegraf
-		mkdir -p $(DESTDIR)/etc/telegraf/telegraf.d ; \
+	@if [ $(GOOS) != "windows" ]; then \
+		mkdir -p "$(DESTDIR)" ; \
+		mkdir -p "$(DESTDIR)$(PREFIX)/bin" ; \
+		mkdir -p "$(DESTDIR)/etc/telegraf/telegraf.d" ; \
+		mkdir -p "$(DESTDIR)/etc/logrotate.d" ; \
+		mkdir -p "$(DESTDIR)/var/log/telegraf" ; \
+		go build -o "$(DESTDIR)$(PREFIX)/bin" -ldflags "-w -s $(LDFLAGS)" ./cmd/telegraf ; \
 		cp -f etc/telegraf.conf "$(DESTDIR)/etc/telegraf" ; \
-		mkdir -p $(DESTDIR)/etc/logrotate.d ; \
-		cp -f etc/logrotate.d/telegraf $(DESTDIR)/etc/logrotate.d/telegraf ; \
-		mkdir -p $(DESTDIR)/var/log/telegraf ; \
+		cp -f etc/logrotate.d/telegraf "$(DESTDIR)/etc/logrotate.d/telegraf" ; \
 	else \
-		go build -o $(DISTDIR) -ldflags "-w -s $(LDFLAGS)" ./cmd/telegraf
+		mkdir -p "$(DESTDIR)" ; \
+		go build -o "$(DESTDIR)" -ldflags "-w -s $(LDFLAGS)" ./cmd/telegraf ; \
 		cp -f etc/telegraf_windows.conf $(DESTDIR)/telegraf.conf ; \
 	fi
 
-	if  [ $(GOOS) == "linux" ]; then \
-		mkdir -p $(DESTDIR)$(PREFIX)/lib/telegraf/scripts ; \
+	@if  [ $(GOOS) == "linux" ]; then \
+		mkdir -p "$(DESTDIR)$(PREFIX)/lib/telegraf/scripts" ; \
 		cp -f scripts/init.sh $(DESTDIR)$(PREFIX)/lib/telegraf/scripts ; \
 		cp -f scripts/telegraf.service $(DESTDIR)$(PREFIX)/lib/telegraf/scripts ; \
 	fi
@@ -103,15 +98,17 @@ test:
 
 .PHONY: fmt
 fmt:
-	@gofmt -s -w $(filter-out plugins/parsers/influx/machine.go, $(GOFILES))
+	@gofmt -s -w $(filter-out plugins/parsers/influx/machine.go, $(shell git ls-files '*.go')))
 
 .PHONY: fmtcheck
+fmtcheck: GOFMT = $(shell gofmt -l $(filter-out plugins/parsers/influx/machine.go, $(shell git ls-files '*.go')))
 fmtcheck:
 	@if [ ! -z "$(GOFMT)" ]; then \
 		echo "[ERROR] gofmt has found errors in the following files:"  ; \
 		echo "$(GOFMT)" ; \
 		echo "" ;\
-		echo "Run make fmt to fix them." ; \
+		echo "Run 'make fmt' to fix them." ; \
+		echo "" ;\
 		exit 1 ;\
 	fi
 
@@ -207,6 +204,9 @@ docker-image: deb
 		--build-arg "package=telegraf_$(DEB_FULL_VERSION)_$(deb_arch).deb" \
 		-t "telegraf-dev:$(COMMIT)" .
 
+RPM_FULL_VERSION := $(shell $(GOHOST) run scripts/pv.go $(FULL_VERSION) RPM_FULL_VERSION)
+DEB_FULL_VERSION := $(shell $(GOHOST) run scripts/pv.go $(FULL_VERSION) DEB_FULL_VERSION)
+
 debs := telegraf_$(DEB_FULL_VERSION)_amd64.deb
 debs += telegraf_$(DEB_FULL_VERSION)_arm64.deb
 debs += telegraf_$(DEB_FULL_VERSION)_armel.deb
@@ -223,21 +223,21 @@ rpms += telegraf-$(RPM_FULL_VERSION).i386.rpm
 rpms += telegraf-$(RPM_FULL_VERSION).s390x.rpm
 rpms += telegraf-$(RPM_FULL_VERSION).x86_64.rpm
 
-tars += telegraf-$(VERSION)_darwin_amd64.tar.gz
-tars += telegraf-$(VERSION)_freebsd_amd64.tar.gz
-tars += telegraf-$(VERSION)_freebsd_i386.tar.gz
-tars += telegraf-$(VERSION)_linux_amd64.tar.gz
-tars += telegraf-$(VERSION)_linux_arm64.tar.gz
-tars += telegraf-$(VERSION)_linux_armel.tar.gz
-tars += telegraf-$(VERSION)_linux_armhf.tar.gz
-tars += telegraf-$(VERSION)_linux_i386.tar.gz
-tars += telegraf-$(VERSION)_linux_mips.tar.gz
-tars += telegraf-$(VERSION)_linux_mipsel.tar.gz
-tars += telegraf-$(VERSION)_linux_s390x.tar.gz
-tars += telegraf-$(VERSION)_static_linux_amd64.tar.gz
+tars += telegraf-$(FULL_VERSION)_darwin_amd64.tar.gz
+tars += telegraf-$(FULL_VERSION)_freebsd_amd64.tar.gz
+tars += telegraf-$(FULL_VERSION)_freebsd_i386.tar.gz
+tars += telegraf-$(FULL_VERSION)_linux_amd64.tar.gz
+tars += telegraf-$(FULL_VERSION)_linux_arm64.tar.gz
+tars += telegraf-$(FULL_VERSION)_linux_armel.tar.gz
+tars += telegraf-$(FULL_VERSION)_linux_armhf.tar.gz
+tars += telegraf-$(FULL_VERSION)_linux_i386.tar.gz
+tars += telegraf-$(FULL_VERSION)_linux_mips.tar.gz
+tars += telegraf-$(FULL_VERSION)_linux_mipsel.tar.gz
+tars += telegraf-$(FULL_VERSION)_linux_s390x.tar.gz
+tars += telegraf-$(FULL_VERSION)_static_linux_amd64.tar.gz
 
-zips += telegraf-$(VERSION)_windows_amd64.zip
-zips += telegraf-$(VERSION)_windows_i386.zip
+zips += telegraf-$(FULL_VERSION)_windows_amd64.zip
+zips += telegraf-$(FULL_VERSION)_windows_i386.zip
 
 dists := $(debs) $(rpms) $(tars) $(zips)
 
@@ -247,7 +247,6 @@ packages: $(dists)
 $(rpms):
 	$(MAKE) install
 	mkdir -p build/dist
-	echo $@
 	fpm --force \
 		--log error \
 		--architecture $(rpm_arch) \
@@ -268,14 +267,14 @@ $(rpms):
 		--rpm-posttrans scripts/rpm/post-install.sh \
 		--name telegraf \
 		--version $(VERSION) \
-		--iteration $(shell $(GONATIVE) -- go run scripts/pv.go $(FULL_VERSION) RPM_RELEASE) \
+		--iteration $(shell $(GOHOST) -- go run scripts/pv.go $(FULL_VERSION) RPM_RELEASE) \
         --chdir $(DESTDIR) \
 		--package build/dist/$@
 
 $(debs):
 	$(MAKE) install
 	mkdir -p build/dist
-	cp -f "$(DESTDIR)/etc/telegraf/telegraf.conf" "$(DESTDIR)/etc/telegraf/telegraf/conf.sample"
+	cp -f "$(DESTDIR)/etc/telegraf/telegraf.conf{,.sample}"
 	fpm --force \
 		--log error \
 		--architecture $(deb_arch) \
@@ -294,19 +293,19 @@ $(debs):
 		--description "Plugin-driven server agent for reporting metrics into InfluxDB." \
 		--name telegraf \
 		--version $(VERSION) \
-		--iteration $(shell $(GONATIVE) -- go run scripts/pv.go $(FULL_VERSION) DEB_REVISION) \
+		--iteration $(shell $(GOHOST) -- go run scripts/pv.go $(FULL_VERSION) DEB_REVISION) \
         --chdir $(DESTDIR) \
 		--package build/dist/$@
 
 .PHONY: $(zips)
 $(zips):
-	@$(MAKE) install
+	$(MAKE) install
 	mkdir -p build/dist
 	(cd $(dir $(DESTDIR)) && zip -r - ./*) > build/dist/$@
 
+.PHONY: $(tars)
 $(tars):
 	$(MAKE) install
-	mkdir -p build/dist
 	tar --owner 0 --group 0 -czvf build/dist/$@ -C $(dir $(DESTDIR)) .
 
 %amd64.deb %x86_64.rpm %linux_amd64.tar.gz: export GOOS := linux
@@ -349,17 +348,3 @@ $(tars):
 
 %.deb %.rpm %.zip %.tar.gz: export PREFIX := /usr
 %.deb %.rpm %.zip %.tar.gz: export DESTDIR = build/$(GOOS)/$(GOARCH)$(cgo)/telegraf-$(VERSION)
-
-.PHONY: upload-release
-upload-release: packages
-	aws s3 sync s3://dl.influxdata.com/telegraf/releases/ ./build/dist/ \
-		--exclude "*" --include "*.deb" --include "*.rpm" --include "*.zip" --include "*.tar.gz" \
-		--acl public-read \
-		--dry-run
-
-.PHONY: upload-nightly
-upload-nightly: packages
-	aws s3 sync s3://dl.influxdata.com/telegraf/nightlies/ ./build/dist/ \
-		--exclude "*" --include "*.deb" --include "*.rpm" --include "*.zip" --include "*.tar.gz" \
-		--acl public-read \
-		--dry-run
