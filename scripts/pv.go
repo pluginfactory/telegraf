@@ -50,7 +50,12 @@ func (v *Version) RPMFullVersion() string {
 	if v.version == "nightly" {
 		return v.version
 	}
-	return v.RPMVersion() + "-" + v.RPMRelease() + "." + v.RPMExtraVer()
+
+	if v.RPMExtraVer() != "" {
+		return v.RPMVersion() + "-" + v.RPMRelease() + "." + v.RPMExtraVer()
+	}
+
+	return v.RPMVersion() + "-" + v.RPMRelease()
 }
 
 func (v *Version) DebVersion() string {

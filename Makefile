@@ -1,4 +1,4 @@
-NEXT_VERSION := 1.9.0
+NEXT_VERSION := 1.15.0
 PREFIX ?= /usr/local
 BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD)
 COMMIT ?= $(shell git rev-parse --short HEAD)
@@ -6,16 +6,18 @@ GOFILES ?= $(shell git ls-files '*.go')
 GOFMT ?= $(shell gofmt -l $(filter-out plugins/parsers/influx/machine.go, $(GOFILES)))
 GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
-LDFLAGS += -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.branch=$(BRANCH)
+LDFLAGS += -X main.version=$(VERSION) -X main.commit=$(COMMIT)-X main.branch=$(BRANCH)
 
 ifeq ($(OS), Windows_NT)
 	VERSION := $(shell git describe --exact-match --tags 2>nul)
 	HOME := $(HOMEPATH)
+	EXE := .exe
 else ifeq ($(SHELL), sh.exe)
 	VERSION := $(shell git describe --exact-match --tags 2>nul)
 	HOME := $(HOMEPATH)
 	CGO_ENABLED ?= 0
 	export CGO_ENABLED
+	EXE := .exe
 else
 	VERSION ?= $(shell git describe --exact-match --tags 2>/dev/null)
 endif
@@ -46,46 +48,53 @@ all:
 .PHONY: help
 help:
 	@echo 'Targets:'
-	@echo '  all      - download dependencies and compile telegraf binary'
-	@echo '  deps     - download dependencies'
-	@echo '  telegraf - compile telegraf binary'
-	@echo '  test     - run unit tests'
-	@echo '  install  - install to DESTDIR using PREFIX'
-	 echo ''
-	@echo 'Package Targets:'
-	@echo '  deb      - build a deb package'
-	@echo '  rpm      - build a rpm package'
-	@echo '  zip      - build a zip package'
-	@echo '  tar.gz   - build a tar.gz package'
-	 echo ''
-	@echo 'Packages:'
-	@$(foreach package,$(packages),echo "  $(package)";)
+	@echo '  all        - download dependencies and compile telegraf binary'
+	@echo '  deps       - download dependencies'
+	@echo '  telegraf   - compile telegraf binary'
+	@echo '  test       - run short unit tests'
+	@echo '  fmt        - format source files'
+	@echo '  tidy       - tidy go modules'
+	@echo '  check-deps - check docs/LICENSE_OF_DEPENDENCIES.md'
+	@echo '  clean      - delete build artifacts'
+	@echo ''
+	@echo 'Easy Package Targets:'
+	@echo '  deb        - build a deb package'
+	@echo '  rpm        - build a rpm package'
+	@echo '  zip        - build a zip package'
+	@echo '  tar.gz     - build a tar.gz package'
+	@echo ''
+	@echo 'Full Package Target List:'
+	@$(foreach dist,$(dists),echo "  $(dist)";)
 
 .PHONY: deps
 deps:
 	go mod download
 
-.PHONY: telegraf
 telegraf:
 	go build -ldflags "$(LDFLAGS)" ./cmd/telegraf
 
 .PHONY: install
-install: telegraf etc/telegraf.conf etc/logrotate.d/telegraf
+install:
+	$(MAKE) telegraf
+
+	mkdir -p "$(DESTDIR)"
 	if [ $(GOOS) != "windows" ]; then \
+		mkdir -p $(DESTDIR)$(PREFIX)/bin ; \
+		go build -o $(DISTDIR)$(PREFIX)/bin -ldflags "-w -s $(LDFLAGS)" ./cmd/telegraf
 		mkdir -p $(DESTDIR)/etc/telegraf/telegraf.d ; \
-		mkdir -p $(DESTDIR)/var/log/telegraf ; \
+		cp -f etc/telegraf.conf "$(DESTDIR)/etc/telegraf" ; \
 		mkdir -p $(DESTDIR)/etc/logrotate.d ; \
-		mkdir -p $(DESTDIR)/usr/lib/telegraf/scripts ; \
-		mkdir -p $(DESTDIR)$(PREFIX)/bin/ ; \
-		cp -f etc/telegraf.conf $(DESTDIR)/etc/telegraf ; \
-		cp -f etc/logrotate.d/telegraf $(DESTDIR)/etc/logrotate.d ; \
-		cp -f scripts/init.sh $(DESTDIR)/usr/lib/telegraf/scripts ; \
-		cp -f scripts/telegraf.service $(DESTDIR)/usr/lib/telegraf/scripts ; \
-		cp -f telegraf$(EXE) $(DESTDIR)$(PREFIX)/bin ; \
+		cp -f etc/logrotate.d/telegraf $(DESTDIR)/etc/logrotate.d/telegraf ; \
+		mkdir -p $(DESTDIR)/var/log/telegraf ; \
 	else \
-		mkdir -p $(DESTDIR) ; \
-		cp -f etc/telegraf.conf $(DESTDIR)/telegraf ; \
-		cp -f telegraf$(EXE) $(DESTDIR)/telegraf ; \
+		go build -o $(DISTDIR) -ldflags "-w -s $(LDFLAGS)" ./cmd/telegraf
+		cp -f etc/telegraf_windows.conf $(DESTDIR)/telegraf.conf ; \
+	fi
+
+	if  [ $(GOOS) == "linux" ]; then \
+		mkdir -p $(DESTDIR)$(PREFIX)/lib/telegraf/scripts ; \
+		cp -f scripts/init.sh $(DESTDIR)$(PREFIX)/lib/telegraf/scripts ; \
+		cp -f scripts/telegraf.service $(DESTDIR)$(PREFIX)/lib/telegraf/scripts ; \
 	fi
 
 .PHONY: test
@@ -146,76 +155,35 @@ test-all: fmtcheck vet
 check-deps:
 	./scripts/check-deps.sh
 
-.PHONY: package
-package:
-	./scripts/build.py --package --platform=all --arch=all
-
-.PHONY: package-release
-package-release:
-	./scripts/build.py --release --package --platform=all --arch=all \
-		--upload --bucket=dl.influxdata.com/telegraf/releases
-
-.PHONY: package-nightly
-package-nightly:
-	./scripts/build.py --nightly --package --platform=all --arch=all \
-		--upload --bucket=dl.influxdata.com/telegraf/nightlies
-
 .PHONY: clean
 clean:
 	-rm -f telegraf
 	-rm -f telegraf.exe
 	-rm -rf build
 
-.PHONY: docker-image
-docker-image:
-	docker build -f scripts/stretch.docker -t "telegraf:$(COMMIT)" .
-
 plugins/parsers/influx/machine.go: plugins/parsers/influx/machine.go.rl
 	ragel -Z -G2 $^ -o $@
-
-.PHONY: static
-static:
-	@echo "Building static linux binary..."
-	@CGO_ENABLED=0 \
-	GOOS=linux \
-	GOARCH=amd64 \
-	go build -ldflags "$(LDFLAGS)" ./cmd/telegraf
 
 .PHONY: plugin-%
 plugin-%:
 	@echo "Starting dev environment for $${$(@)} input plugin..."
 	@docker-compose -f plugins/inputs/$${$(@)}/dev/docker-compose.yml up
 
-.PHONY: ci-1.13
-ci-1.13:
-	docker build -t quay.io/influxdb/telegraf-ci:1.13.8 - < scripts/ci-1.13.docker
-	docker push quay.io/influxdb/telegraf-ci:1.13.8
+deb_amd64 := amd64
+deb_386 := i386
+deb_s390x := s390x
+deb_arm5 := armel
+deb_arm6 := armhf
+deb_arm647 := arm64
+deb_arch := $(deb_$(GOARCH)$(GOARM))
 
-.PHONY: ci-1.12
-ci-1.12:
-	docker build -t quay.io/influxdb/telegraf-ci:1.12.17 - < scripts/ci-1.12.docker
-	docker push quay.io/influxdb/telegraf-ci:1.12.17
-
-plugins/parsers/influx/machine.go: plugins/parsers/influx/machine.go.rl
-	ragel -Z -G2 $^ -o $@
-
-rpm_amd64 = amd64
-rpm_386 = i386
-rpm_s390x = s390x
-rpm_arm5 = armel
-rpm_arm6 = armv6hl
-rpm_arm647 = arm64
-
-rpm_arch = $(rpm_$(GOARCH)$(GOARM))
-
-deb_amd64 = amd64
-deb_386 = i386
-deb_s390x = s390x
-deb_arm5 = armel
-deb_arm6 = armhf
-deb_arm647 = arm64
-
-deb_arch = $(deb_$(GOARCH)$(GOARM))
+rpm_amd64 := amd64
+rpm_386 := i386
+rpm_s390x := s390x
+rpm_arm5 := armel
+rpm_arm6 := armv6hl
+rpm_arm647 := aarch64
+rpm_arch := $(rpm_$(GOARCH)$(GOARM))
 
 .PHONY: deb
 deb:
@@ -239,14 +207,47 @@ docker-image: deb
 		--build-arg "package=telegraf_$(DEB_FULL_VERSION)_$(deb_arch).deb" \
 		-t "telegraf-dev:$(COMMIT)" .
 
-.SECONDARY: %.deb %.rpm %.zip %.tar.gz
-%.deb %.rpm %.zip %.tar.gz: export PREFIX = /usr
-%.deb %.rpm %.zip %.tar.gz: export DESTDIR = build/$(GOOS)/$(deb_arch)
-%.deb %.rpm %.zip %.tar.gz: export LDFLAGS = -w -s
+debs := telegraf_$(DEB_FULL_VERSION)_amd64.deb
+debs += telegraf_$(DEB_FULL_VERSION)_arm64.deb
+debs += telegraf_$(DEB_FULL_VERSION)_armel.deb
+debs += telegraf_$(DEB_FULL_VERSION)_armhf.deb
+debs += telegraf_$(DEB_FULL_VERSION)_i386.deb
+debs += telegraf_$(DEB_FULL_VERSION)_mips.deb
+debs += telegraf_$(DEB_FULL_VERSION)_mipsel.deb
+debs += telegraf_$(DEB_FULL_VERSION)_s390x.deb
 
-%.rpm:
+rpms += telegraf-$(RPM_FULL_VERSION).aarch64.rpm
+rpms += telegraf-$(RPM_FULL_VERSION).armel.rpm
+rpms += telegraf-$(RPM_FULL_VERSION).armv6hl.rpm
+rpms += telegraf-$(RPM_FULL_VERSION).i386.rpm
+rpms += telegraf-$(RPM_FULL_VERSION).s390x.rpm
+rpms += telegraf-$(RPM_FULL_VERSION).x86_64.rpm
+
+tars += telegraf-$(VERSION)_darwin_amd64.tar.gz
+tars += telegraf-$(VERSION)_freebsd_amd64.tar.gz
+tars += telegraf-$(VERSION)_freebsd_i386.tar.gz
+tars += telegraf-$(VERSION)_linux_amd64.tar.gz
+tars += telegraf-$(VERSION)_linux_arm64.tar.gz
+tars += telegraf-$(VERSION)_linux_armel.tar.gz
+tars += telegraf-$(VERSION)_linux_armhf.tar.gz
+tars += telegraf-$(VERSION)_linux_i386.tar.gz
+tars += telegraf-$(VERSION)_linux_mips.tar.gz
+tars += telegraf-$(VERSION)_linux_mipsel.tar.gz
+tars += telegraf-$(VERSION)_linux_s390x.tar.gz
+tars += telegraf-$(VERSION)_static_linux_amd64.tar.gz
+
+zips += telegraf-$(VERSION)_windows_amd64.zip
+zips += telegraf-$(VERSION)_windows_i386.zip
+
+dists := $(debs) $(rpms) $(tars) $(zips)
+
+.PHONY: packages
+packages: $(dists)
+
+$(rpms):
 	$(MAKE) install
 	mkdir -p build/dist
+	echo $@
 	fpm --force \
 		--log error \
 		--architecture $(rpm_arch) \
@@ -258,38 +259,38 @@ docker-image: deb
 		--maintainer support@influxdb.com \
 		--config-files /etc/telegraf/telegraf.conf \
 		--config-files /etc/logrotate.d/telegraf \
-		--after-install scripts/post-install.sh \
-		--before-install scripts/pre-install.sh \
-		--after-remove scripts/post-remove.sh \
-		--before-remove scripts/pre-remove.sh \
+		--after-install scripts/rpm/post-install.sh \
+		--before-install scripts/rpm/pre-install.sh \
+		--after-remove scripts/rpm/post-remove.sh \
 		--description "Plugin-driven server agent for reporting metrics into InfluxDB." \
 		--depends coreutils \
 		--depends shadow-utils \
-		--rpm-posttrans scripts/post-install.sh \
+		--rpm-posttrans scripts/rpm/post-install.sh \
 		--name telegraf \
 		--version $(VERSION) \
 		--iteration $(shell $(GONATIVE) -- go run scripts/pv.go $(FULL_VERSION) RPM_RELEASE) \
         --chdir $(DESTDIR) \
 		--package build/dist/$@
 
-%.deb:
+$(debs):
 	$(MAKE) install
 	mkdir -p build/dist
+	cp -f "$(DESTDIR)/etc/telegraf/telegraf.conf" "$(DESTDIR)/etc/telegraf/telegraf/conf.sample"
 	fpm --force \
 		--log error \
-		--architecture $(rpm_arch) \
+		--architecture $(deb_arch) \
 		--input-type dir \
 		--output-type deb \
 		--vendor InfluxData \
 		--url https://github.com/influxdata/telegraf \
 		--license MIT \
 		--maintainer support@influxdb.com \
-		--config-files /etc/telegraf/telegraf.conf \
+		--config-files /etc/telegraf/telegraf.conf.sample \
 		--config-files /etc/logrotate.d/telegraf \
-		--after-install scripts/post-install.sh \
-		--before-install scripts/pre-install.sh \
-		--after-remove scripts/post-remove.sh \
-		--before-remove scripts/pre-remove.sh \
+		--after-install scripts/deb/post-install.sh \
+		--before-install scripts/deb/pre-install.sh \
+		--after-remove scripts/deb/post-remove.sh \
+		--before-remove scripts/deb/pre-remove.sh \
 		--description "Plugin-driven server agent for reporting metrics into InfluxDB." \
 		--name telegraf \
 		--version $(VERSION) \
@@ -297,78 +298,68 @@ docker-image: deb
         --chdir $(DESTDIR) \
 		--package build/dist/$@
 
-%.zip:
+.PHONY: $(zips)
+$(zips):
 	@$(MAKE) install
 	mkdir -p build/dist
-	(cd $(DESTDIR) && zip -r - ./*) > build/dist/$@
+	(cd $(dir $(DESTDIR)) && zip -r - ./*) > build/dist/$@
 
-%.tar.gz:
+$(tars):
 	$(MAKE) install
 	mkdir -p build/dist
-	tar --owner 0 --group 0 -czvf build/dist/$@ -C $(DESTDIR) .
+	tar --owner 0 --group 0 -czvf build/dist/$@ -C $(dir $(DESTDIR)) .
 
-packages := telegraf_$(DEB_FULL_VERSION)_amd64.deb
-packages += telegraf_$(DEB_FULL_VERSION)_arm64.deb
-packages += telegraf_$(DEB_FULL_VERSION)_armel.deb
-packages += telegraf_$(DEB_FULL_VERSION)_armhf.deb
-packages += telegraf_$(DEB_FULL_VERSION)_i386.deb
-packages += telegraf_$(DEB_FULL_VERSION)_s390x.deb
+%amd64.deb %x86_64.rpm %linux_amd64.tar.gz: export GOOS := linux
+%amd64.deb %x86_64.rpm %linux_amd64.tar.gz: export GOARCH := amd64
 
-packages += telegraf-$(RPM_FULL_VERSION).arm64.rpm
-packages += telegraf-$(RPM_FULL_VERSION).armel.rpm
-packages += telegraf-$(RPM_FULL_VERSION).armv6hl.rpm
-packages += telegraf-$(RPM_FULL_VERSION).i386.rpm
-packages += telegraf-$(RPM_FULL_VERSION).s390x.rpm
-packages += telegraf-$(RPM_FULL_VERSION).x86_64.rpm
+%static_linux_amd64.tar.gz: export cgo := -nocgo
+%static_linux_amd64.tar.gz: export CGO_ENABLED := 0
 
-packages += telegraf-$(VERSION)_freebsd_amd64.tar.gz
-packages += telegraf-$(VERSION)_freebsd_i386.tar.gz
-packages += telegraf-$(VERSION)_linux_amd64.tar.gz
-packages += telegraf-$(VERSION)_linux_arm64.tar.gz
-packages += telegraf-$(VERSION)_linux_armel.tar.gz
-packages += telegraf-$(VERSION)_linux_armhf.tar.gz
-packages += telegraf-$(VERSION)_linux_i386.tar.gz
-packages += telegraf-$(VERSION)_linux_s390x.tar.gz
-packages += telegraf-$(VERSION)-static_linux_amd64.tar.gz
+%i386.deb %i386.rpm %linux_i386.tar.gz: export GOOS := linux
+%i386.deb %i386.rpm %linux_i386.tar.gz: export GOARCH := 386
 
-packages += telegraf-$(VERSION)_windows_amd64.zip
-packages += telegraf-$(VERSION)_windows_i386.zip
+%armel.deb %armel.rpm %linux_armel.tar.gz: export GOOS := linux
+%armel.deb %armel.rpm %linux_armel.tar.gz: export GOARCH := arm
+%armel.deb %armel.rpm %linux_armel.tar.gz: export GOARM := 5
 
-package: $(packages)
+%armhf.deb %armv6hl.rpm %linux_armhf.tar.gz: export GOOS := linux
+%armhf.deb %armv6hl.rpm %linux_armhf.tar.gz: export GOARCH := arm
+%armhf.deb %armv6hl.rpm %linux_armhf.tar.gz: export GOARM := 6
 
-%amd64.deb %x86_64.rpm %linux_amd64.tar.gz: export GOOS = linux
-%amd64.deb %x86_64.rpm %linux_amd64.tar.gz: export GOARCH = amd64
+%arm64.deb %aarch64.rpm %linux_arm64.tar.gz: export GOOS := linux
+%arm64.deb %aarch64.rpm %linux_arm64.tar.gz: export GOARCH := arm64
+%arm64.deb %aarch64.rpm %linux_arm64.tar.gz: export GOARM := 7
 
-%static_linux_amd64.tar.gz: export CGO_ENABLED = 0
+%s390x.deb %s390x.rpm %linux_s390x.tar.gz: export GOOS := linux
+%s390x.deb %s390x.rpm %linux_s390x.tar.gz: export GOARCH := s390x
 
-%i386.deb %i386.rpm %linux_i386.tar.gz: export GOOS = linux
-%i386.deb %i386.rpm %linux_i386.tar.gz: export GOARCH = 386
+%freebsd_amd64.tar.gz: export GOOS := freebsd
+%freebsd_amd64.tar.gz: export GOARCH := amd64
 
-%armel.deb %armel.rpm %linux_armel.tar.gz: export GOOS = linux
-%armel.deb %armel.rpm %linux_armel.tar.gz: export GOARCH = arm
-%armel.deb %armel.rpm %linux_armel.tar.gz: export GOARM = 5
+%freebsd_i386.tar.gz: export GOOS := freebsd
+%freebsd_i386.tar.gz: export GOARCH := 386
 
-%armhf.deb %armv6hl.rpm %linux_armhf.tar.gz: export GOOS = linux
-%armhf.deb %armv6hl.rpm %linux_armhf.tar.gz: export GOARCH = arm
-%armhf.deb %armv6hl.rpm %linux_armhf.tar.gz: export GOARM = 6
+%windows_amd64.zip: export EXE := .exe
+%windows_amd64.zip: export GOOS := windows
+%windows_amd64.zip: export GOARCH := amd64
 
-%arm64.deb %arm64.rpm %linux_arm64.tar.gz: export GOOS = linux
-%arm64.deb %arm64.rpm %linux_arm64.tar.gz: export GOARCH = arm64
-%arm64.deb %arm64.rpm %linux_arm64.tar.gz: export GOARM = 7
+%windows_i386.zip: export EXE := .exe
+%windows_i386.zip: export GOOS := windows
+%windows_i386.zip: export GOARCH := 386
 
-%s390x.deb %s390x.rpm %linux_s390x.tar.gz: export GOOS = linux
-%s390x.deb %s390x.rpm %linux_s390x.tar.gz: export GOARCH = s390x
+%.deb %.rpm %.zip %.tar.gz: export PREFIX := /usr
+%.deb %.rpm %.zip %.tar.gz: export DESTDIR = build/$(GOOS)/$(GOARCH)$(cgo)/telegraf-$(VERSION)
 
-%freebsd_amd64.tar.gz: export GOOS = freebsd
-%freebsd_amd64.tar.gz: export GOARCH = amd64
+.PHONY: upload-release
+upload-release: packages
+	aws s3 sync s3://dl.influxdata.com/telegraf/releases/ ./build/dist/ \
+		--exclude "*" --include "*.deb" --include "*.rpm" --include "*.zip" --include "*.tar.gz" \
+		--acl public-read \
+		--dry-run
 
-%freebsd_i386.tar.gz: export GOOS = freebsd
-%freebsd_i386.tar.gz: export GOARCH = 386
-
-%windows_amd64.zip: export EXE = .exe
-%windows_amd64.zip: export GOOS = windows
-%windows_amd64.zip: export GOARCH = amd64
-
-%windows_amd64.zip: export EXE = .exe
-%windows_i386.zip: export GOOS = windows
-%windows_i386.zip: export GOARCH = 386
+.PHONY: upload-nightly
+upload-nightly: packages
+	aws s3 sync s3://dl.influxdata.com/telegraf/nightlies/ ./build/dist/ \
+		--exclude "*" --include "*.deb" --include "*.rpm" --include "*.zip" --include "*.tar.gz" \
+		--acl public-read \
+		--dry-run
