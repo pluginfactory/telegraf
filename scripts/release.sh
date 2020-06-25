@@ -41,4 +41,5 @@ aws s3 sync ./ "s3://$BUCKET/" \
 	--include "*.deb" \
 	--include "*.rpm" \
 	--include "*.zip" \
-	--acl public-read
+	--acl public-read \
+	--dry-run
