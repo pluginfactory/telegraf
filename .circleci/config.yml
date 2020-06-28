@@ -107,7 +107,7 @@ jobs:
     steps:
       - attach_workspace:
           at: '/go'
-      - run: 'make package'
+      - run: 'make -j4 package'
       - store_artifacts:
           path: './build/dist'
           destination: 'build/dist'
