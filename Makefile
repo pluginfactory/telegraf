@@ -230,7 +230,7 @@ $(rpms):
 	$(MAKE) telegraf
 	$(MAKE) install
 	mkdir -p $(pkgdir)
-	echo fpm --force \
+	fpm --force \
 		--log error \
 		--architecture $(rpm_arch) \
 		--input-type dir \
@@ -259,7 +259,7 @@ $(debs):
 	$(MAKE) telegraf
 	$(MAKE) install
 	mkdir -p $(pkgdir)
-	echo fpm --force \
+	fpm --force \
 		--log error \
 		--architecture $(deb_arch) \
 		--input-type dir \
