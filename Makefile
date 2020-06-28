@@ -86,26 +86,6 @@ deps:
 telegraf:
 	go build -ldflags "$(LDFLAGS)" ./cmd/telegraf
 
-build/$(GOOS)-$(GOARCH)$(GOARM)$(cgo)/telegraf$(EXEEXT):
-	@mkdir -pv $(dir $@)
-	go build -o $(dir $@) -ldflags "$(LDFLAGS)" ./cmd/telegraf
-
-.PHONY: install
-install: build/$(GOOS)-$(GOARCH)$(GOARM)$(cgo)/telegraf$(EXEEXT)
-	@mkdir -pv $(DESTDIR)$(bindir)
-	@mkdir -pv $(DESTDIR)$(sysconfdir)
-	@mkdir -pv $(DESTDIR)$(localstatedir)
-	@mkdir -pv $(DESTDIR)$(datarootdir)
-	@mkdir -pv $(DESTDIR)$(docdir)
-	@if [ $(GOOS) != "windows" ]; then mkdir -pv $(DESTDIR)$(runstatedir)/telegraf; fi
-	@if [ $(GOOS) != "windows" ]; then mkdir -pv $(DESTDIR)$(sysconfdir)/logrotate.d; fi
-	@if [ $(GOOS) != "windows" ]; then mkdir -pv $(DESTDIR)$(localstatedir)/log/telegraf; fi
-	@if [ $(GOOS) != "windows" ]; then mkdir -pv $(DESTDIR)$(sysconfdir)/telegraf/telegraf.d; fi
-	@cp -fv build/$(GOOS)-$(GOARCH)$(GOARM)/telegraf$(EXEEXT) $(DESTDIR)$(bindir)
-	@if [ $(GOOS) != "windows" ]; then cp -fv etc/telegraf.conf $(DESTDIR)$(sysconfdir)/telegraf/telegraf.conf$(conf_suffix); fi
-	@if [ $(GOOS) != "windows" ]; then cp -fv etc/logrotate.d/telegraf $(DESTDIR)$(sysconfdir)/logrotate.d; fi
-	@if [ $(GOOS) = "windows" ]; then cp -fv etc/telegraf_windows.conf $(DESTDIR)/telegraf.conf; fi
-
 .PHONY: test
 test:
 	go test -short ./...
@@ -192,6 +172,29 @@ ci-1.13:
 	docker build -t quay.io/influxdb/telegraf-ci:1.13.11 - < scripts/ci-1.13.docker
 	docker push quay.io/influxdb/telegraf-ci:1.13.11
 
+.PHONY: install
+install: $(buildbin)
+	@mkdir -pv $(DESTDIR)$(bindir)
+	@mkdir -pv $(DESTDIR)$(sysconfdir)
+	@mkdir -pv $(DESTDIR)$(localstatedir)
+	@mkdir -pv $(DESTDIR)$(datarootdir)
+	@mkdir -pv $(DESTDIR)$(docdir)
+	@if [ $(GOOS) != "windows" ]; then mkdir -pv $(DESTDIR)$(runstatedir)/telegraf; fi
+	@if [ $(GOOS) != "windows" ]; then mkdir -pv $(DESTDIR)$(sysconfdir)/logrotate.d; fi
+	@if [ $(GOOS) != "windows" ]; then mkdir -pv $(DESTDIR)$(localstatedir)/log/telegraf; fi
+	@if [ $(GOOS) != "windows" ]; then mkdir -pv $(DESTDIR)$(sysconfdir)/telegraf/telegraf.d; fi
+	@cp -fv $(buildbin) $(DESTDIR)$(bindir)
+	@if [ $(GOOS) != "windows" ]; then cp -fv etc/telegraf.conf $(DESTDIR)$(sysconfdir)/telegraf/telegraf.conf$(conf_suffix); fi
+	@if [ $(GOOS) != "windows" ]; then cp -fv etc/logrotate.d/telegraf $(DESTDIR)$(sysconfdir)/logrotate.d; fi
+	@if [ $(GOOS) = "windows" ]; then cp -fv etc/telegraf_windows.conf $(DESTDIR)/telegraf.conf; fi
+
+# Telegraf build per platform.  This improves package performance by sharing
+# the bin between deb/rpm/tar packages over building directly into the package
+# directory.
+$(buildbin):
+	@mkdir -pv $(dir $@)
+	go build -o $(dir $@) -ldflags "$(LDFLAGS)" ./cmd/telegraf
+
 debs := telegraf_$(deb_version)_amd64.deb
 debs += telegraf_$(deb_version)_arm64.deb
 debs += telegraf_$(deb_version)_armel.deb
@@ -229,14 +232,6 @@ dists := $(debs) $(rpms) $(tars) $(zips)
 .PHONY: package
 package: $(dists)
 
-deb_amd64 := amd64
-deb_386 := i386
-deb_s390x := s390x
-deb_arm5 := armel
-deb_arm6 := armhf
-deb_arm647 := arm64
-deb_arch := $(deb_$(GOARCH)$(GOARM))
-
 rpm_amd64 := amd64
 rpm_386 := i386
 rpm_s390x := s390x
@@ -272,6 +267,14 @@ $(rpms):
 		--iteration $(rpm_iteration) \
         --chdir $(DESTDIR) \
 		--package $(pkgdir)/$@
+
+deb_amd64 := amd64
+deb_386 := i386
+deb_s390x := s390x
+deb_arm5 := armel
+deb_arm6 := armhf
+deb_arm647 := arm64
+deb_arch := $(deb_$(GOARCH)$(GOARM))
 
 .PHONY: $(debs)
 $(debs):
@@ -383,4 +386,5 @@ upload:
 %.zip: export prefix := /
 
 %.deb %.rpm %.tar.gz %.zip: export DESTDIR = build/$(GOOS)-$(GOARCH)$(GOARM)$(cgo)-$(pkg)/telegraf-$(version)
+%.deb %.rpm %.tar.gz %.zip: export buildbin = build/$(GOOS)-$(GOARCH)$(GOARM)$(cgo)/telegraf$(EXEEXT)
 %.deb %.rpm %.tar.gz %.zip: export LDFLAGS = -w -s
