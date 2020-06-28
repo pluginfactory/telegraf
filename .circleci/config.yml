@@ -109,26 +109,28 @@ jobs:
           at: '/go'
       - run: 'make package'
       - store_artifacts:
-          path: './build'
-          destination: 'build'
+          path: './build/dist'
+          destination: 'build/dist'
+
   release:
     <<: [ *defaults, *go-1_14 ]
     steps:
       - attach_workspace:
           at: '/go'
-      - run: 'make package-release'
+      - run: 'make package'
       - store_artifacts:
-          path: './build'
-          destination: 'build'
+          path: './build/dist'
+          destination: 'build/dist'
   nightly:
     <<: [ *defaults, *go-1_14 ]
     steps:
       - attach_workspace:
           at: '/go'
-      - run: 'make package-nightly'
+      - run: 'NIGHTLY=1 make package'
+      - run: 'make upload'
       - store_artifacts:
-          path: './build'
-          destination: 'build'
+          path: './build/dist'
+          destination: 'build/dist'
 
 workflows:
   version: 2

@@ -5,11 +5,34 @@ import (
 	"fmt"
 	"os"
 	"regexp"
-	"strings"
 )
 
+// The spec has fields:
+// Version:
+// Release: 0
+
+// telegraf-1.14.4-1.x86_64.rpm
+// telegraf-1.14.0-0.rc1.x86_64.rpm
+// telegraf-nightly.x86_64.rpm
+// telegraf-1.15.0~d14b18f1-0.x86_64.rpm
+//
+// telegraf_1.14.4-1_amd64.deb
+// telegraf_1.14.0~rc1-1_amd64.deb
+// telegraf_nightly_amd64.deb
+// telegraf_1.15.0~d14b18f1-0_amd64.deb
+//
+// telegraf-1.14.4_linux_amd64.tar.gz
+// telegraf-1.14.0~rc1_linux_amd64.tar.gz
+// telegraf-nightly_linux_amd64.tar.gz
+// telegraf-1.15.0~d14b18f1_linux_amd64.tar.gz
+//
+// telegraf-1.14.4_windows_amd64.zip
+// telegraf-1.14.0~rc1_windows_amd64.zip
+// telegraf-nightly_windows_amd64.zip
+// telegraf-1.15.0~d14b18f1_windows_amd64.zip
+
 var (
-	versionRe = regexp.MustCompile(`([^\.]+\.[^\.]+\.[^-~]+)(?:(?:-(\w+))|(?:~(\w+)))?`)
+	versionRe = regexp.MustCompile(`v([^\.]+\.[^\.]+\.[^-~]+)(?:(?:-(\w+))|(?:~(\w+)))?`)
 )
 
 type Version struct {
@@ -18,10 +41,25 @@ type Version struct {
 	hash    string
 }
 
+// telegraf-nightly.x86_64.rpm
+//          ^     ^
+//
+// telegraf-1.14.4-1.x86_64.rpm
+//          ^    ^
+//
+// telegraf-1.14.0-0.rc1.x86_64.rpm
+//          ^    ^
+//
+// telegraf-1.15.0~d14b18f1-0.x86_64.rpm
+//          ^    ^
 func (v *Version) RPMVersion() string {
 	return v.version
 }
 
+// telegraf-nightly.x86_64.rpm -> 0
+// telegraf-1.14.4-1.x86_64.rpm -> 1
+// telegraf-1.14.0-0.rc1.x86_64.rpm -> 0
+// telegraf-1.15.0~d14b18f1-0.x86_64.rpm -> 0
 func (v *Version) RPMRelease() string {
 	if v.version == "nightly" {
 		return "0"
@@ -31,31 +69,34 @@ func (v *Version) RPMRelease() string {
 		return "1"
 	}
 
-	if v.rc != "" {
-		num := strings.TrimPrefix(v.rc, "rc")
-		return "0." + num
-	}
-
 	return "0"
 }
 
-func (v *Version) RPMExtraVer() string {
-	if v.hash != "" {
-		return v.hash
-	}
-	return v.rc
-}
-
+// telegraf-nightly.x86_64.rpm
+//          ^     ^
+//
+// telegraf-1.14.4-1.x86_64.rpm
+//          ^      ^
+//
+// telegraf-1.14.0-0.rc1.x86_64.rpm
+//          ^          ^
+//
+// telegraf-1.15.0~d14b18f1-0.x86_64.rpm
+//          ^               ^
 func (v *Version) RPMFullVersion() string {
 	if v.version == "nightly" {
-		return v.version
+		return "nightly"
 	}
 
-	if v.RPMExtraVer() != "" {
-		return v.RPMVersion() + "-" + v.RPMRelease() + "." + v.RPMExtraVer()
+	if v.rc != "" {
+		return fmt.Sprintf("%s-%s.%s", v.RPMVersion(), v.RPMRelease(), v.rc)
 	}
 
-	return v.RPMVersion() + "-" + v.RPMRelease()
+	if v.hash != "" {
+		return fmt.Sprintf("%s~%s-%s", v.RPMVersion(), v.hash, v.RPMRelease())
+	}
+
+	return fmt.Sprintf("%s-%s", v.RPMVersion(), v.RPMRelease())
 }
 
 func (v *Version) DebVersion() string {
@@ -78,6 +119,20 @@ func (v *Version) DebFullVersion() string {
 		return v.version
 	}
 	return v.DebVersion() + "-" + v.DebRevision()
+}
+
+func (v *Version) ZipFullVersion() string {
+	if v.version == "nightly" {
+		return v.version
+	}
+	return v.DebVersion()
+}
+
+func (v *Version) TarFullVersion() string {
+	if v.version == "nightly" {
+		return v.version
+	}
+	return v.DebVersion()
 }
 
 func version(version string) (*Version, error) {
@@ -108,8 +163,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// fmt.Fprintln(os.Stderr, args[0])
-
 	v, err := version(args[0])
 	if err != nil {
 		fmt.Println(err)
@@ -126,8 +179,6 @@ func main() {
 		fmt.Println(v.RPMVersion())
 	case "RPM_RELEASE":
 		fmt.Println(v.RPMRelease())
-	case "RPM_EXTRAVER":
-		fmt.Println(v.RPMExtraVer())
 	case "RPM_FULL_VERSION":
 		fmt.Println(v.RPMFullVersion())
 	case "DEB_VERSION":
@@ -139,10 +190,11 @@ func main() {
 	default:
 		fmt.Printf("RPM_VERSION=%s\n", v.RPMVersion())
 		fmt.Printf("RPM_RELEASE=%s\n", v.RPMRelease())
-		fmt.Printf("RPM_EXTRAVER=%s\n", v.RPMExtraVer())
 		fmt.Printf("RPM_FULL_VERSION=%s\n", v.RPMFullVersion())
 		fmt.Printf("DEB_VERSION=%s\n", v.DebVersion())
 		fmt.Printf("DEB_REVISION=%s\n", v.DebRevision())
 		fmt.Printf("DEB_FULL_VERSION=%s\n", v.DebFullVersion())
+		fmt.Printf("ZIP_FULL_VERSION=%s\n", v.ZipFullVersion())
+		fmt.Printf("TAR_FULL_VERSION=%s\n", v.TarFullVersion())
 	}
 }
