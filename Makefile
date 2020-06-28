@@ -275,7 +275,7 @@ $(debs):
 	$(MAKE) telegraf
 	$(MAKE) install
 	mkdir -p $(pkgdir)
-	fpm --force \
+	echo fpm --force \
 		--log error \
 		--architecture $(deb_arch) \
 		--input-type dir \
@@ -369,8 +369,8 @@ upload:
 %.deb: export pkg := deb
 %.deb: export prefix := /usr
 %.deb: export conf_suffix := .sample
-%.deb: export sysconfdir ?= /etc
-%.deb: export localstatedir ?= /var
+%.deb: export sysconfdir := /etc
+%.deb: export localstatedir := /var
 %.rpm: export pkg := rpm
 %.rpm: export prefix := /usr
 %.rpm: export sysconfdir := /etc
