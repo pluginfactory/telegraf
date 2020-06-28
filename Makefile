@@ -277,8 +277,8 @@ $(debs):
 		--description "Plugin-driven server agent for reporting metrics into InfluxDB." \
 		--name telegraf \
 		--version $(version) \
-		--iteration $(deb_interation) \
-        --chdir $(DESTDIR) \
+		--iteration $(deb_iteration) \
+		--chdir $(DESTDIR) \
 		--package $(pkgdir)/$@
 
 .PHONY: $(zips)
