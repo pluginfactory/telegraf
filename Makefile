@@ -86,21 +86,25 @@ deps:
 telegraf:
 	go build -ldflags "$(LDFLAGS)" ./cmd/telegraf
 
+build/$(GOOS)-$(GOARCH)$(GOARM)$(cgo)/telegraf$(EXEEXT):
+	@mkdir -pv $(dir $@)
+	go build -o $(dir $@) -ldflags "$(LDFLAGS)" ./cmd/telegraf
+
 .PHONY: install
-install:
-	mkdir -p $(DESTDIR)$(bindir)
-	mkdir -p $(DESTDIR)$(sysconfdir)
-	mkdir -p $(DESTDIR)$(localstatedir)
-	mkdir -p $(DESTDIR)$(datarootdir)
-	mkdir -p $(DESTDIR)$(docdir)
-	if [ $(GOOS) != "windows" ]; then mkdir -p $(DESTDIR)$(runstatedir)/telegraf; fi
-	if [ $(GOOS) != "windows" ]; then mkdir -p $(DESTDIR)$(sysconfdir)/logrotate.d; fi
-	if [ $(GOOS) != "windows" ]; then mkdir -p $(DESTDIR)$(localstatedir)/log/telegraf; fi
-	if [ $(GOOS) != "windows" ]; then mkdir -p $(DESTDIR)$(sysconfdir)/telegraf/telegraf.d; fi
-	cp -f telegraf$(EXEEXT) $(DESTDIR)$(bindir)
-	if [ $(GOOS) != "windows" ]; then cp -f etc/telegraf.conf $(DESTDIR)$(sysconfdir)/telegraf/telegraf.conf$(conf_suffix); fi
-	if [ $(GOOS) != "windows" ]; then cp -f etc/logrotate.d/telegraf $(DESTDIR)$(sysconfdir)/logrotate.d; fi
-	if [ $(GOOS) = "windows" ]; then cp -f etc/telegraf_windows.conf $(DESTDIR)/telegraf.conf; fi
+install: build/$(GOOS)-$(GOARCH)$(GOARM)$(cgo)/telegraf$(EXEEXT)
+	@mkdir -pv $(DESTDIR)$(bindir)
+	@mkdir -pv $(DESTDIR)$(sysconfdir)
+	@mkdir -pv $(DESTDIR)$(localstatedir)
+	@mkdir -pv $(DESTDIR)$(datarootdir)
+	@mkdir -pv $(DESTDIR)$(docdir)
+	@if [ $(GOOS) != "windows" ]; then mkdir -pv $(DESTDIR)$(runstatedir)/telegraf; fi
+	@if [ $(GOOS) != "windows" ]; then mkdir -pv $(DESTDIR)$(sysconfdir)/logrotate.d; fi
+	@if [ $(GOOS) != "windows" ]; then mkdir -pv $(DESTDIR)$(localstatedir)/log/telegraf; fi
+	@if [ $(GOOS) != "windows" ]; then mkdir -pv $(DESTDIR)$(sysconfdir)/telegraf/telegraf.d; fi
+	@cp -fv build/$(GOOS)-$(GOARCH)$(GOARM)/telegraf$(EXEEXT) $(DESTDIR)$(bindir)
+	@if [ $(GOOS) != "windows" ]; then cp -fv etc/telegraf.conf $(DESTDIR)$(sysconfdir)/telegraf/telegraf.conf$(conf_suffix); fi
+	@if [ $(GOOS) != "windows" ]; then cp -fv etc/logrotate.d/telegraf $(DESTDIR)$(sysconfdir)/logrotate.d; fi
+	@if [ $(GOOS) = "windows" ]; then cp -fv etc/telegraf_windows.conf $(DESTDIR)/telegraf.conf; fi
 
 .PHONY: test
 test:
@@ -243,9 +247,8 @@ rpm_arch := $(rpm_$(GOARCH)$(GOARM))
 
 .PHONY: $(rpms)
 $(rpms):
-	$(MAKE) telegraf
-	$(MAKE) install
-	mkdir -p $(pkgdir)
+	@$(MAKE) install
+	@mkdir -p $(pkgdir)
 	fpm --force \
 		--log error \
 		--architecture $(rpm_arch) \
@@ -272,10 +275,9 @@ $(rpms):
 
 .PHONY: $(debs)
 $(debs):
-	$(MAKE) telegraf
-	$(MAKE) install
-	mkdir -p $(pkgdir)
-	echo fpm --force \
+	@$(MAKE) install
+	@mkdir -pv $(pkgdir)
+	fpm --force \
 		--log error \
 		--architecture $(deb_arch) \
 		--input-type dir \
@@ -299,16 +301,14 @@ $(debs):
 
 .PHONY: $(zips)
 $(zips):
-	$(MAKE) telegraf
-	$(MAKE) install
-	mkdir -p $(pkgdir)
+	@$(MAKE) install
+	@mkdir -p $(pkgdir)
 	(cd $(dir $(DESTDIR)) && zip -r - ./*) > $(pkgdir)/$@
 
 .PHONY: $(tars)
 $(tars):
-	$(MAKE) telegraf
-	$(MAKE) install
-	mkdir -p $(pkgdir)
+	@$(MAKE) install
+	@mkdir -p $(pkgdir)
 	tar --owner 0 --group 0 -czvf $(pkgdir)/$@ -C $(dir $(DESTDIR)) .
 
 upload:
@@ -382,5 +382,5 @@ upload:
 %.zip: export pkg := zip
 %.zip: export prefix := /
 
-%.deb %.rpm %.tar.gz %.zip: export DESTDIR = build/$(GOOS)-$(GOARCH)$(cgo)-$(pkg)/telegraf-$(version)
+%.deb %.rpm %.tar.gz %.zip: export DESTDIR = build/$(GOOS)-$(GOARCH)$(GOARM)$(cgo)-$(pkg)/telegraf-$(version)
 %.deb %.rpm %.tar.gz %.zip: export LDFLAGS = -w -s
