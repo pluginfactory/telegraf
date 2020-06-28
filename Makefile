@@ -225,6 +225,22 @@ dists := $(debs) $(rpms) $(tars) $(zips)
 .PHONY: package
 package: $(dists)
 
+deb_amd64 := amd64
+deb_386 := i386
+deb_s390x := s390x
+deb_arm5 := armel
+deb_arm6 := armhf
+deb_arm647 := arm64
+deb_arch := $(deb_$(GOARCH)$(GOARM))
+
+rpm_amd64 := amd64
+rpm_386 := i386
+rpm_s390x := s390x
+rpm_arm5 := armel
+rpm_arm6 := armv6hl
+rpm_arm647 := aarch64
+rpm_arch := $(rpm_$(GOARCH)$(GOARM))
+
 .PHONY: $(rpms)
 $(rpms):
 	$(MAKE) telegraf
