@@ -100,7 +100,7 @@ install:
 	cp -f telegraf$(EXEEXT) $(DESTDIR)$(bindir)
 	if [ $(GOOS) != "windows" ]; then cp -f etc/telegraf.conf $(DESTDIR)$(sysconfdir)/telegraf/telegraf.conf$(conf_suffix); fi
 	if [ $(GOOS) != "windows" ]; then cp -f etc/logrotate.d/telegraf $(DESTDIR)$(sysconfdir)/logrotate.d; fi
-	if [ $(GOOS) == "windows" ]; then cp -f etc/telegraf_windows.conf $(DESTDIR)/telegraf.conf; fi
+	if [ $(GOOS) = "windows" ]; then cp -f etc/telegraf_windows.conf $(DESTDIR)/telegraf.conf; fi
 
 .PHONY: test
 test:
